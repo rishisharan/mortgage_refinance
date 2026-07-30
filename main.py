@@ -3,7 +3,7 @@ main.py — Orchestrates fetch -> analyze -> email
 
 Usage:
   python main.py             # run once
-  python main.py --schedule  # run daily at 8am
+  python main.py --schedule  # run every 5 minutes
 """
 
 import sys
@@ -17,43 +17,40 @@ from agent import generate_summary
 from emailer import send_email
 
 
-def run_pipeline():
-    print(f"\n{'='*50}")
-    print(f"  Mortgage Rate Tracker")
-    print(f"  {datetime.now().strftime('%A, %B %d %Y at %I:%M %p')}")
-    print(f"{'='*50}\n")
+def log(message):
+    print(f"{datetime.now().strftime('%H:%M:%S')}  {message}", flush=True)
 
-    # Step 1: Fetch rates
-    print("Step 1: Fetching mortgage rates from FRED...")
+
+def run_pipeline():
+    log("Starting agent")
+
+    log("Fetching mortgage rates from FRED")
     try:
         rates = fetch_all_rates()
         rates_text = format_rates_for_prompt(rates)
-        print(f"\n  Raw data:\n{rates_text}\n")
     except Exception as e:
-        print(f"Failed to fetch rates: {e}")
+        log(f"Failed to fetch rates: {e}")
         return
 
-    # Step 2: Generate structured summary
-    print("Step 2: Generating AI summary...")
+    log("Connecting to Claude")
     try:
         data = generate_summary(rates_text)
-        print(f"  Signal: {data['signal']} -- {data['signal_label']}")
-        print(f"  30yr: {data['rate_30yr']}%  |  15yr: {data['rate_15yr']}%\n")
+        log(f"Summarized -- {data['signal']} {data['signal_label']} "
+            f"(30yr: {data['rate_30yr']}%, 15yr: {data['rate_15yr']}%)")
     except Exception as e:
-        print(f"Failed to generate summary: {e}")
+        log(f"Failed to generate summary: {e}")
         return
 
-    # Step 3: Send visual email
-    print("Step 3: Sending email...")
+    log("Sending email")
     try:
         today = datetime.now().strftime("%B %d, %Y")
         subject = f"Mortgage Briefing {today} -- {data['signal']} {data['signal_label']}"
         send_email(subject=subject, data=data)
     except Exception as e:
-        print(f"Failed to send email: {e}")
+        log(f"Failed to send email: {e}")
         return
 
-    print(f"\nDone! Check your inbox.\n")
+    log("Done -- check your inbox")
 
 
 def check_env_vars():
@@ -71,13 +68,12 @@ def main():
     check_env_vars()
 
     if "--schedule" in sys.argv:
-        print("Scheduler mode -- running daily at 8:00 AM")
-        print("Leave this window open. Ctrl+C to stop.\n")
-        schedule.every().day.at("08:00").do(run_pipeline)
+        log("Scheduler mode -- running every 5 minutes (Ctrl+C to stop)")
+        schedule.every(5).minutes.do(run_pipeline)
         run_pipeline()
         while True:
             schedule.run_pending()
-            time.sleep(60)
+            time.sleep(15)
     else:
         run_pipeline()
 
